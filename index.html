@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Predicción con TensorFlow.js</title>
+
+    <!-- Carga de TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+
+    <!-- Carga de Chart.js desde CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        button { margin-top: 10px; }
+        canvas { max-width: 700px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h2>Predicción con TensorFlow.js</h2>
+    <!-- Botón para entrenar el modelo -->
+    <button onclick="entrenarModelo()">Entrenar Modelo</button>
+
+    <h3>Gráfica de Pérdida durante el Entrenamiento</h3>
+    <canvas id="lossChart"></canvas>
+    <p id="info-perdida"></p>
+
+    <h3>Predicción</h3>
+    <!-- Campo para ingresar valores de entrada -->
+    <label>Valores de X (separados por comas):</label>
+    <input type="text" id="inputX" value="10,20,25">
+    <button onclick="predecir()">Predecir</button>
+
+    <p id="estado"></p>
+    <div id="resultado"></div>
+
+    <script>
+        let modelo; // Variable global para el modelo
+        let lossValues = []; // Historial de pérdidas para graficar
+
+        // Datos de entrenamiento: x => y = 3x
+        const xs = tf.tensor1d([1, 2, 3, 4, 5, 6, 7]);
+        const ys = tf.tensor1d([3, 6, 9, 12, 15, 18, 21]);
+
+        // Función para crear el modelo
+        function crearModelo() {
+            const model = tf.sequential();
+            model.add(tf.layers.dense({ inputShape: [1], units: 1 })); // Capa densa con una sola neurona
+            return model;
+        }
+
+        // Función para entrenar el modelo
+        async function entrenarModelo() {
+            modelo = crearModelo(); // Crear un nuevo modelo
+            lossValues = []; // Reiniciar valores de pérdida
+
+            // Compilar el modelo con optimizador y función de pérdida
+            modelo.compile({
+                optimizer: tf.train.sgd(0.01),
+                loss: 'meanSquaredError'
+            });
+
+            // Entrenar el modelo durante 100 épocas
+            const history = await modelo.fit(xs, ys, {
+                epochs: 100,
+                callbacks: {
+                    onEpochEnd: async (epoch, logs) => {
+                        lossValues.push({ epoch, loss: logs.loss }); // Guardar pérdida por época
+                    }
+                }
+            });
+
+            // Mostrar información de la pérdida
+            const perdidaInicial = lossValues[0].loss.toFixed(4);
+            const perdidaFinal = lossValues[lossValues.length - 1].loss.toFixed(4);
+            const reduccion = ((1 - perdidaFinal / perdidaInicial) * 100).toFixed(2);
+
+            document.getElementById("info-perdida").textContent =
+                `Pérdida inicial: ${perdidaInicial}, Pérdida final: ${perdidaFinal} (Reducción: ${reduccion}%)`;
+
+            document.getElementById("estado").textContent = "Estado: Modelo entrenado correctamente";
+
+            graficarPerdida(); // Mostrar gráfica
+        }
+
+        // Función para graficar la pérdida por época
+        function graficarPerdida() {
+            const ctx = document.getElementById('lossChart').getContext('2d');
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: lossValues.map(p => p.epoch), // Épocas en el eje X
+                    datasets: [{
+                        label: 'Pérdida (Loss)',
+                        data: lossValues.map(p => p.loss), // Pérdidas en el eje Y
+                        borderColor: 'rgb(75, 192, 192)',
+                        fill: false,
+                        tension: 0.1,
+                        pointRadius: 4,
+                        pointBackgroundColor: 'rgb(75, 192, 192)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Época' }
+                        },
+                        y: {
+                            title: { display: true, text: 'Valor de Pérdida' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Función para hacer predicciones con el modelo entrenado
+        async function predecir() {
+            const inputStr = document.getElementById("inputX").value;
+            const inputArray = inputStr.split(",").map(x => parseFloat(x.trim())); // Convertir a números
+            const inputTensor = tf.tensor2d(inputArray, [inputArray.length, 1]); // Tensor 2D
+
+            const resultadoTensor = modelo.predict(inputTensor); // Realizar predicción
+            const resultadoArray = await resultadoTensor.array(); // Convertir tensor a array JS
+
+            // Mostrar resultados en el DOM
+            let salida = '<h4>Resultados:</h4><ul>';
+            inputArray.forEach((x, i) => {
+                salida += `<li>Para x = ${x}: y = ${resultadoArray[i][0].toFixed(2)}</li>`;
+            });
+            salida += '</ul>';
+
+            document.getElementById("resultado").innerHTML = salida;
+        }
+    </script>
+</body>
+</html>
